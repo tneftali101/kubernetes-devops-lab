@@ -30,7 +30,7 @@ spec:
     stages {
         stage('Build') {
             steps {
-                echo 'Build stage triggered from a GitHub update!'
+                echo 'Build stage triggered from a GitHub update! - Attempt 2'
             }
         }
 
