@@ -72,29 +72,53 @@ spec:
             }
         }
 
-        stage('Build Image') {
+        stage('Build and Push Image') {
             steps {
-                echo 'Building our custom NGINX image...'
+                echo 'Building and publishing NGINX image...'
 
                 container('buildkit') {
-                    sh '''
-                        buildctl-daemonless.sh build \
-                          --frontend dockerfile.v0 \
-                          --local context=app \
-                          --local dockerfile=app \
-                          --output type=oci,dest=/tmp/nginx-lab.oci.tar
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'ghcr-publisher',
+                            usernameVariable: 'GHCR_USER',
+                            passwordVariable: 'GHCR_TOKEN'
+                        )
+                    ]) {
+                        sh '''
+                            set +x
+                            set -eu
+                            umask 077
 
-                        ls -lh /tmp/nginx-lab.oci.tar
-                    '''
+                            export DOCKER_CONFIG="$(mktemp -d)"
+                            trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+
+                            AUTH="$(printf '%s:%s' \
+                              "$GHCR_USER" "$GHCR_TOKEN" \
+                              | base64 | tr -d '\\n')"
+
+                            printf '{"auths":{"ghcr.io":{"auth":"%s"}}}\\n' \
+                              "$AUTH" > "$DOCKER_CONFIG/config.json"
+
+                            IMAGE="ghcr.io/tneftali101/nginx-lab:${GIT_COMMIT}"
+
+                            echo "Publishing image: $IMAGE"
+
+                            buildctl-daemonless.sh build \
+                              --frontend dockerfile.v0 \
+                              --local context=app \
+                              --local dockerfile=app \
+                              --output "type=image,name=$IMAGE,push=true"
+
+                            echo "Image published successfully!"
+                        '''
+                    }
                 }
-
-                echo 'Container image built successfully!'
             }
         }
 
         stage('Test NGINX') {
             steps {
-                echo 'Checking NGINX availability...'
+                echo 'Checking deployed NGINX availability...'
 
                 container('curl') {
                     sh '''
