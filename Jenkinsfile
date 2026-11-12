@@ -28,9 +28,18 @@ spec:
     }
 
     stages {
-        stage('Build') {
+        stage('Verify Source') {
             steps {
-                echo 'Build stage triggered from a GitHub update! - Attempt 2'
+                echo 'Checking application source files...'
+
+                sh '''
+                    pwd
+                    ls -l app/
+                    test -f app/Dockerfile
+                    test -f app/index.html
+                '''
+
+                echo 'Application files verified successfully!'
             }
         }
 
