@@ -143,19 +143,32 @@ spec:
 
         stage('Deploy to Kubernetes') {
             steps {
-                echo 'Deploying new image to Kubernetes...'
+                echo 'Saving current image and deploying new version...'
 
                 container('kubectl') {
                     sh '''
                         set -eu
 
+                        PREVIOUS_IMAGE="$(kubectl get deployment nginx-web \
+                          -n "$DEPLOY_NAMESPACE" \
+                          -o jsonpath='{.spec.template.spec.containers[0].image}')"
+
+                        test -n "$PREVIOUS_IMAGE"
+
+                        printf '%s\\n' "$PREVIOUS_IMAGE" \
+                          > .previous-nginx-image
+
+                        echo "Previously deployed image: $PREVIOUS_IMAGE"
+
                         IMAGE="$IMAGE_REPOSITORY:$GIT_COMMIT"
+
+                        echo "Deploying new image: $IMAGE"
 
                         kubectl set image deployment nginx-web \
                           nginx="$IMAGE" \
                           -n "$DEPLOY_NAMESPACE"
 
-                        echo "Requested deployment of $IMAGE"
+                        echo 'Kubernetes image update requested!'
                     '''
                 }
             }
@@ -163,17 +176,66 @@ spec:
 
         stage('Verify Deployment') {
             steps {
-                echo 'Checking Kubernetes rollout...'
+                echo 'Checking Kubernetes rollout with rollback protection...'
 
                 container('kubectl') {
                     sh '''
-                        kubectl rollout status deployment nginx-web \
+                        set -eu
+
+                        IMAGE="$IMAGE_REPOSITORY:$GIT_COMMIT"
+                        PREVIOUS_IMAGE="$(cat .previous-nginx-image)"
+
+                        if kubectl rollout status deployment nginx-web \
                           -n "$DEPLOY_NAMESPACE" \
-                          --timeout=180s
+                          --timeout=180s; then
+
+                            echo 'Kubernetes rollout completed successfully!'
+
+                        else
+                            echo 'WARNING: New deployment did not complete.'
+                            echo 'Checking whether rollback is safe...'
+
+                            CURRENT_IMAGE="$(kubectl get deployment nginx-web \
+                              -n "$DEPLOY_NAMESPACE" \
+                              -o jsonpath='{.spec.template.spec.containers[0].image}')"
+
+                            if [ "$CURRENT_IMAGE" != "$IMAGE" ]; then
+                                echo 'Deployment image changed unexpectedly.'
+                                echo 'Automatic rollback skipped for safety.'
+                                exit 1
+                            fi
+
+                            if [ "$PREVIOUS_IMAGE" = "$IMAGE" ]; then
+                                echo 'Previous image is identical to new image.'
+                                echo 'Automatic rollback skipped.'
+                                exit 1
+                            fi
+
+                            echo "Restoring image: $PREVIOUS_IMAGE"
+
+                            if kubectl set image deployment nginx-web \
+                              nginx="$PREVIOUS_IMAGE" \
+                              -n "$DEPLOY_NAMESPACE"; then
+
+                                echo 'Rollback requested. Verifying...'
+
+                                if kubectl rollout status deployment nginx-web \
+                                  -n "$DEPLOY_NAMESPACE" \
+                                  --timeout=180s; then
+
+                                    echo 'Rollback completed successfully!'
+                                else
+                                    echo 'ERROR: Rollback verification failed!'
+                                fi
+                            else
+                                echo 'ERROR: Rollback could not be requested!'
+                            fi
+
+                            echo 'Build failed because the new rollout failed.'
+                            exit 1
+                        fi
                     '''
                 }
-
-                echo 'Kubernetes rollout completed!'
             }
         }
 
