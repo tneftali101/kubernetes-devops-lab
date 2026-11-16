@@ -25,3 +25,19 @@ resource "kubernetes_namespace_v1" "creator_studio" {
     }
   }
 }
+
+resource "kubernetes_resource_quota_v1" "creator_studio_quota" {
+  metadata {
+    name      = "creator-studio-quota"
+    namespace = kubernetes_namespace_v1.creator_studio.metadata[0].name
+  }
+
+  spec {
+    hard = {
+      pods       = "20"
+      services   = "10"
+      configmaps = "20"
+    }
+  }
+}
+
