@@ -161,6 +161,7 @@ spec:
                         echo "Previously deployed image: $PREVIOUS_IMAGE"
 
                         IMAGE="$IMAGE_REPOSITORY:$GIT_COMMIT"
+                        IMAGE="$IMAGE_REPOSITORY:rollback-test-invalid-image-20261116"
 
                         echo "Deploying new image: $IMAGE"
 
@@ -183,6 +184,7 @@ spec:
                         set -eu
 
                         IMAGE="$IMAGE_REPOSITORY:$GIT_COMMIT"
+                        IMAGE="$IMAGE_REPOSITORY:rollback-test-invalid-image-20261116"
                         PREVIOUS_IMAGE="$(cat .previous-nginx-image)"
 
                         if kubectl rollout status deployment nginx-web \
