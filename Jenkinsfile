@@ -179,17 +179,32 @@ spec:
 
         stage('Test NGINX') {
             steps {
-                echo 'Checking deployed NGINX availability...'
+                echo 'Verifying deployed application version...'
 
                 container('curl') {
                     sh '''
-                        curl --fail --silent --show-error \
-                          http://nginx-service.monitoring-lab.svc.cluster.local/ \
-                          --output /dev/null
+                        set -eu
+
+                        EXPECTED_LINE="$(grep -o \
+                          '<h2>Application Version [^<]*</h2>' \
+                          app/index.html | head -n 1)"
+
+                        test -n "$EXPECTED_LINE"
+
+                        echo "Expected: $EXPECTED_LINE"
+
+                        for i in 1 2 3 4 5; do
+                            RESPONSE="$(curl --fail --silent --show-error \
+                              http://nginx-service.monitoring-lab.svc.cluster.local/)"
+
+                            echo "$RESPONSE" | grep -F "$EXPECTED_LINE" > /dev/null
+
+                            echo "HTTP version check $i passed"
+                        done
                     '''
                 }
 
-                echo 'NGINX responded successfully!'
+                echo 'Application version verified successfully!'
             }
         }
     }
