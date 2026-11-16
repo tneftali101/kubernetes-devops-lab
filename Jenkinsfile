@@ -6,9 +6,11 @@ pipeline {
 apiVersion: v1
 kind: Pod
 spec:
+  serviceAccountName: jenkins-deployer
   securityContext:
     runAsUser: 1000
     runAsGroup: 1000
+
   containers:
     - name: curl
       image: curlimages/curl:8.17.0
@@ -49,11 +51,34 @@ spec:
         - name: buildkit-data
           mountPath: /home/user/.local/share/buildkit
 
+    - name: kubectl
+      image: alpine/kubectl:1.36.4
+      command:
+        - sleep
+      args:
+        - "99d"
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 128Mi
+
   volumes:
     - name: buildkit-data
       emptyDir: {}
 '''
         }
+    }
+
+    options {
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        IMAGE_REPOSITORY = 'ghcr.io/tneftali101/nginx-lab'
+        DEPLOY_NAMESPACE = 'monitoring-lab'
     }
 
     stages {
@@ -99,7 +124,7 @@ spec:
                             printf '{"auths":{"ghcr.io":{"auth":"%s"}}}\\n' \
                               "$AUTH" > "$DOCKER_CONFIG/config.json"
 
-                            IMAGE="ghcr.io/tneftali101/nginx-lab:${GIT_COMMIT}"
+                            IMAGE="$IMAGE_REPOSITORY:$GIT_COMMIT"
 
                             echo "Publishing image: $IMAGE"
 
@@ -109,10 +134,46 @@ spec:
                               --local dockerfile=app \
                               --output "type=image,name=$IMAGE,push=true"
 
-                            echo "Image published successfully!"
+                            echo 'Image published successfully!'
                         '''
                     }
                 }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                echo 'Deploying new image to Kubernetes...'
+
+                container('kubectl') {
+                    sh '''
+                        set -eu
+
+                        IMAGE="$IMAGE_REPOSITORY:$GIT_COMMIT"
+
+                        kubectl set image deployment nginx-web \
+                          nginx="$IMAGE" \
+                          -n "$DEPLOY_NAMESPACE"
+
+                        echo "Requested deployment of $IMAGE"
+                    '''
+                }
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                echo 'Checking Kubernetes rollout...'
+
+                container('kubectl') {
+                    sh '''
+                        kubectl rollout status deployment nginx-web \
+                          -n "$DEPLOY_NAMESPACE" \
+                          --timeout=180s
+                    '''
+                }
+
+                echo 'Kubernetes rollout completed!'
             }
         }
 
