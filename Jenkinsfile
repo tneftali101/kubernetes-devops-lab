@@ -206,7 +206,7 @@ spec:
                               --connect-timeout 5 \
                               --max-time 15 \
                               --output "$RESPONSE_FILE" \
-                              http://nginx-service.monitoring-lab.svc.cluster.local/
+                              http://nginx-service.monitoring-lab.svc.cluster.local./
 
                             if ! grep -Fq "$EXPECTED_LINE" "$RESPONSE_FILE"; then
                                 echo "ERROR: Deployed version does not match source!"
