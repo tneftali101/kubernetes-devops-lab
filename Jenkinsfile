@@ -193,11 +193,25 @@ spec:
 
                         echo "Expected: $EXPECTED_LINE"
 
-                        for i in 1 2 3 4 5; do
-                            RESPONSE="$(curl --fail --silent --show-error \
-                              http://nginx-service.monitoring-lab.svc.cluster.local/)"
+                        RESPONSE_FILE="$(mktemp)"
+                        trap 'rm -f "$RESPONSE_FILE"' EXIT
 
-                            echo "$RESPONSE" | grep -F "$EXPECTED_LINE" > /dev/null
+                        for i in 1 2 3 4 5; do
+                            echo "Starting HTTP version check $i..."
+
+                            curl --fail --silent --show-error \
+                              --retry 5 \
+                              --retry-all-errors \
+                              --retry-delay 3 \
+                              --connect-timeout 5 \
+                              --max-time 15 \
+                              --output "$RESPONSE_FILE" \
+                              http://nginx-service.monitoring-lab.svc.cluster.local/
+
+                            if ! grep -Fq "$EXPECTED_LINE" "$RESPONSE_FILE"; then
+                                echo "ERROR: Deployed version does not match source!"
+                                exit 1
+                            fi
 
                             echo "HTTP version check $i passed"
                         done
