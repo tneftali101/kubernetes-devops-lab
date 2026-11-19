@@ -1,0 +1,15 @@
+.git
+.gitignore
+
+# Local binaries
+backend
+creator-studio-api
+*.exe
+
+# Local configuration and secrets
+.env
+.env.*
+*.log
+
+# Editor files
+.vscode
